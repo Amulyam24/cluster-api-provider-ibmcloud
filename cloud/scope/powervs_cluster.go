@@ -610,13 +610,14 @@ func (s *PowerVSClusterScope) ReconcilePowerVSServiceInstance() error {
 		if err != nil {
 			return err
 		}
+
 		if serviceInstance == nil {
 			return fmt.Errorf("error failed to get service instance with id %s", serviceInstanceID)
 		}
-		if *serviceInstance.State != string(infrav1beta2.ServiceInstanceStateActive) {
-			return fmt.Errorf("service instance not in active state, current state: %s", *serviceInstance.State)
+
+		if err := s.checkServiceInstanceState(serviceInstance.State); err != nil {
+			return err
 		}
-		s.Info("Found service instance and its in active state", "id", serviceInstanceID)
 		return nil
 	}
 
@@ -641,6 +642,20 @@ func (s *PowerVSClusterScope) ReconcilePowerVSServiceInstance() error {
 	return nil
 }
 
+func (s *PowerVSClusterScope) checkServiceInstanceState(state *string) error {
+	switch *state {
+	case string(infrav1beta2.ServiceInstanceStateActive):
+		s.Info("Found service instance and its in active state")
+		return nil
+	case string(infrav1beta2.ServiceInstanceStateProvisioning):
+		s.Info("Service instance is in provisioning state")
+		return infrav1beta2.ResourceNotReady
+	case string(infrav1beta2.ServiceInstanceStateFailed):
+		return fmt.Errorf("failed to create service instance")
+	}
+	return nil
+}
+
 // checkServiceInstance checks PowerVS service instance exist in cloud.
 func (s *PowerVSClusterScope) isServiceInstanceExists() (string, error) {
 	s.Info("Checking for service instance in cloud")
@@ -654,11 +669,10 @@ func (s *PowerVSClusterScope) isServiceInstanceExists() (string, error) {
 		s.Info("Not able to find service instance", "service instance", s.IBMPowerVSCluster.Spec.ServiceInstance)
 		return "", nil
 	}
-	if *serviceInstance.State != string(infrav1beta2.ServiceInstanceStateActive) {
-		s.Info("Service instance not in active state", "service instance", s.IBMPowerVSCluster.Spec.ServiceInstance, "state", *serviceInstance.State)
-		return "", fmt.Errorf("service instance not in active state, current state: %s", *serviceInstance.State)
+	if err := s.checkServiceInstanceState(serviceInstance.State); err != nil {
+		return "", err
 	}
-	s.Info("Service instance found and its in active state", "id", *serviceInstance.GUID)
+
 	return *serviceInstance.GUID, nil
 }
 
@@ -788,10 +802,20 @@ func (s *PowerVSClusterScope) isDHCPServerActive() error {
 		return err
 	}
 
-	if *dhcpServer.Status != string(infrav1beta2.DHCPServerStateActive) {
-		return fmt.Errorf("error dhcp server state is not active, current state %s", *dhcpServer.Status)
+	if err := s.checkDHCPServerStatus(dhcpServer.Status); err != nil {
+		return nil
 	}
-	s.Info("DHCP server is found and its in active state")
+	return nil
+}
+
+func (s *PowerVSClusterScope) checkDHCPServerStatus(status *string) error {
+	switch *status {
+	case string(infrav1beta2.DHCPServerStateActive):
+		s.Info("DHCP server is found and and is in active state")
+	case string(infrav1beta2.DHCPServerStateBuild):
+		s.Info("DHCP server is in build state")
+		return infrav1beta2.ResourceNotReady
+	}
 	return nil
 }
 
@@ -1148,8 +1172,15 @@ func (s *PowerVSClusterScope) checkTransitGatewayStatus(transitGatewayID *string
 	if transitGateway == nil {
 		return fmt.Errorf("tranist gateway is nil")
 	}
-	if *transitGateway.Status != string(infrav1beta2.TransitGatewayStateAvailable) {
-		return fmt.Errorf("error tranist gateway %s not in available status, current status: %s", *transitGatewayID, *transitGateway.Status)
+
+	switch *transitGateway.Status {
+	case string(infrav1beta2.TransitGatewayStateAvailable):
+		s.Info("Transit gateway successfully created and is in available state")
+	case string(infrav1beta2.TransitGatewayStateFailed):
+		return fmt.Errorf("failed to create transit gateway, current status: %s", *transitGateway.Status)
+	case string(infrav1beta2.TransitGatewayStatePending):
+		s.Info("Transit gateway is in pending state")
+		return infrav1beta2.ResourceNotReady
 	}
 
 	tgConnections, _, err := s.TransitGatewayClient.ListTransitGatewayConnections(&tgapiv1.ListTransitGatewayConnectionsOptions{
@@ -1176,20 +1207,35 @@ func (s *PowerVSClusterScope) checkTransitGatewayStatus(transitGatewayID *string
 	var powerVSAttached, vpcAttached bool
 	for _, conn := range tgConnections.Connections {
 		if *conn.NetworkType == string(vpcNetworkConnectionType) && *conn.NetworkID == *vpcCRN {
-			if *conn.Status != string(infrav1beta2.TransitGatewayConnectionStateAttached) {
-				return fmt.Errorf("error vpc connection not attached to transit gateway, current status: %s", *conn.Status)
+			if err := s.checkTransitGatewayConnectionStatus(conn.Status); err != nil {
+				return err
 			}
+			s.Info("VPC connection successfully attached to transit gateway")
 			vpcAttached = true
 		}
 		if *conn.NetworkType == string(powervsNetworkConnectionType) && *conn.NetworkID == *pvsServiceInstanceCRN {
-			if *conn.Status != string(infrav1beta2.TransitGatewayConnectionStateAttached) {
-				return fmt.Errorf("error powervs connection not attached to transit gateway, current status: %s", *conn.Status)
+			if err := s.checkTransitGatewayConnectionStatus(conn.Status); err != nil {
+				return err
 			}
+			s.Info("PowerVS connection successfully attached to transit gateway")
 			powerVSAttached = true
 		}
 	}
 	if !powerVSAttached || !vpcAttached {
 		return fmt.Errorf("either one of powervs or vpc transit gateway connections are not attached, PowerVS: %t VPC: %t", powerVSAttached, vpcAttached)
+	}
+	return nil
+}
+
+func (s *PowerVSClusterScope) checkTransitGatewayConnectionStatus(status *string) error {
+	switch *status {
+	case string(infrav1beta2.TransitGatewayConnectionStateAttached):
+		return nil
+	case string(infrav1beta2.TransitGatewayConnectionStateFailed):
+		return fmt.Errorf("failed to attach connection to transit gateway, current status: %s", *status)
+	case string(infrav1beta2.TransitGatewayConnectionStatePending):
+		s.Info("Connection is in pending state")
+		return infrav1beta2.ResourceNotReady
 	}
 	return nil
 }
@@ -1284,9 +1330,15 @@ func (s *PowerVSClusterScope) ReconcileLoadBalancer() error {
 			if err != nil {
 				return err
 			}
-			if infrav1beta2.VPCLoadBalancerState(*loadBalancer.ProvisioningStatus) != infrav1beta2.VPCLoadBalancerStateActive {
-				return fmt.Errorf("loadbalancer is not in active state, current state %s", *loadBalancer.ProvisioningStatus)
+
+			switch *loadBalancer.ProvisioningStatus {
+			case string(infrav1beta2.VPCLoadBalancerStateActive):
+				s.Info("Load balancer is successfully created and is in active state")
+			case string(infrav1beta2.VPCLoadBalancerStateCreatePending):
+				s.Info("Load balancer is in create pending state")
+				return infrav1beta2.ResourceNotReady
 			}
+
 			loadBalancerStatus := infrav1beta2.VPCLoadBalancerStatus{
 				ID:       loadBalancer.ID,
 				State:    infrav1beta2.VPCLoadBalancerState(*loadBalancer.ProvisioningStatus),
@@ -1428,7 +1480,6 @@ func (s *PowerVSClusterScope) ReconcileCOSInstance() error {
 	// check COS service instance exist in cloud
 	cosServiceInstanceStatus, err := s.checkCOSServiceInstance()
 	if err != nil {
-		s.Error(err, "error checking cos service instance")
 		return err
 	}
 	if cosServiceInstanceStatus != nil {
@@ -1555,9 +1606,9 @@ func (s *PowerVSClusterScope) checkCOSServiceInstance() (*resourcecontrollerv2.R
 		s.Info("cos service instance is nil", "name", s.COSInstance().Name)
 		return nil, nil
 	}
-	if *serviceInstance.State != string(infrav1beta2.ServiceInstanceStateActive) {
-		s.Info("cos service instance not in active state", "current state", *serviceInstance.State)
-		return nil, fmt.Errorf("cos instance not in active state, current state: %s", *serviceInstance.State)
+
+	if err := s.checkServiceInstanceState(serviceInstance.State); err != nil {
+		return nil, err
 	}
 	return serviceInstance, nil
 }
@@ -1719,21 +1770,35 @@ func (s *PowerVSClusterScope) DeleteLoadBalancer() error {
 			return fmt.Errorf("error fetching the load balancer: %w", err)
 		}
 
-		if lb != nil && lb.ProvisioningStatus != nil && *lb.ProvisioningStatus != string(infrav1beta2.VPCLoadBalancerStateDeletePending) {
-			if _, err = s.IBMVPCClient.DeleteLoadBalancer(&vpcv1.DeleteLoadBalancerOptions{
-				ID: lb.ID,
-			}); err != nil {
-				s.Error(err, "error deleting the load balancer")
-				return err
-			}
-			s.Info("Load balancer successfully deleted")
+		if lb != nil && lb.ProvisioningStatus != nil && *lb.ProvisioningStatus == string(infrav1beta2.VPCLoadBalancerStateDeletePending) {
+			s.Info("Load balancer is currently being deleted")
+			return infrav1beta2.ResourceDeletionPending
 		}
+
+		if _, err = s.IBMVPCClient.DeleteLoadBalancer(&vpcv1.DeleteLoadBalancerOptions{
+			ID: lb.ID,
+		}); err != nil {
+			s.Error(err, "error deleting the load balancer")
+			return err
+		}
+		s.Info("Load balancer successfully deleted")
+
 	}
 	return nil
 }
 
 // DeleteVPCSubnet deletes VPC subnet.
 func (s *PowerVSClusterScope) DeleteVPCSubnet() error {
+	lbs, _, err := s.IBMVPCClient.ListLoadBalancers(&vpcv1.ListLoadBalancersOptions{})
+	if err != nil {
+		return err
+	}
+
+	if len(lbs.LoadBalancers) > 0 {
+		s.Info("cannot delete VPC subnet as load balancers are not yet deleted")
+		return infrav1beta2.ResourceDeletionPending
+	}
+
 	for _, subnet := range s.IBMPowerVSCluster.Status.VPCSubnet {
 		if subnet.ID == nil || subnet.ControllerCreated == nil || !*subnet.ControllerCreated {
 			continue
@@ -1764,6 +1829,16 @@ func (s *PowerVSClusterScope) DeleteVPCSubnet() error {
 func (s *PowerVSClusterScope) DeleteVPC() error {
 	if !s.isResourceCreatedByController(infrav1beta2.ResourceTypeVPC) {
 		return nil
+	}
+
+	nets, _, err := s.IBMVPCClient.ListSubnets(&vpcv1.ListSubnetsOptions{})
+	if err != nil {
+		return err
+	}
+
+	if len(nets.Subnets) > 0 {
+		s.Info("cannot delete VPC as subnets are not yet deleted")
+		return infrav1beta2.ResourceDeletionPending
 	}
 
 	if s.IBMPowerVSCluster.Status.VPC.ID == nil {
@@ -1811,6 +1886,11 @@ func (s *PowerVSClusterScope) DeleteTransitGateway() error {
 		return fmt.Errorf("error fetching the transit gateway: %w", err)
 	}
 
+	if tg.Status != nil && *tg.Status == string(infrav1beta2.TransitGatewayStateDeletePending) {
+		s.Info("transit gateway is being deleted")
+		return infrav1beta2.ResourceDeletionPending
+	}
+
 	tgConnections, _, err := s.TransitGatewayClient.ListTransitGatewayConnections(&tgapiv1.ListTransitGatewayConnectionsOptions{
 		TransitGatewayID: tg.ID,
 	})
@@ -1819,14 +1899,17 @@ func (s *PowerVSClusterScope) DeleteTransitGateway() error {
 	}
 
 	for _, conn := range tgConnections.Connections {
-		if conn.Status != nil && *conn.Status != string(infrav1beta2.TransitGatewayStateDeletePending) {
-			_, err := s.TransitGatewayClient.DeleteTransitGatewayConnection(&tgapiv1.DeleteTransitGatewayConnectionOptions{
-				ID:               conn.ID,
-				TransitGatewayID: tg.ID,
-			})
-			if err != nil {
-				return fmt.Errorf("error deleting transit gateway connection: %w", err)
-			}
+		if conn.Status != nil && *conn.Status == string(infrav1beta2.TransitGatewayConnectionStateDeleting) {
+			s.Info("Transit gateway connection is in deleting state")
+			return infrav1beta2.ResourceDeletionPending
+		}
+
+		_, err := s.TransitGatewayClient.DeleteTransitGatewayConnection(&tgapiv1.DeleteTransitGatewayConnectionOptions{
+			ID:               conn.ID,
+			TransitGatewayID: tg.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("error deleting transit gateway connection: %w", err)
 		}
 	}
 
@@ -1892,7 +1975,8 @@ func (s *PowerVSClusterScope) DeleteServiceInstance() error {
 	}
 
 	if len(servers) > 0 {
-		return fmt.Errorf("cannot delete service instance as DHCP server is not yet deleted")
+		s.Info("cannot delete service instance as DHCP server is not yet deleted")
+		return infrav1beta2.ResourceDeletionPending
 	}
 
 	if _, err = s.ResourceClient.DeleteResourceInstance(&resourcecontrollerv2.DeleteResourceInstanceOptions{

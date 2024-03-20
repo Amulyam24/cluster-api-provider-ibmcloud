@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -142,6 +141,9 @@ func (r *IBMPowerVSClusterReconciler) reconcile(clusterScope *scope.PowerVSClust
 	// reconcile PowerVS service instance
 	clusterScope.Info("Reconciling PowerVS service instance")
 	if err := clusterScope.ReconcilePowerVSServiceInstance(); err != nil {
+		if err == infrav1beta2.ResourceNotReady {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		clusterScope.Error(err, "failed to reconcile service instance")
 		conditions.MarkFalse(powerVSCluster, infrav1beta2.ServiceInstanceReadyCondition, infrav1beta2.ServiceInstanceReconciliationFailedReason, capiv1beta1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
@@ -153,6 +155,9 @@ func (r *IBMPowerVSClusterReconciler) reconcile(clusterScope *scope.PowerVSClust
 	// reconcile network
 	clusterScope.Info("Reconciling network")
 	if err := clusterScope.ReconcileNetwork(); err != nil {
+		if err == infrav1beta2.ResourceNotReady {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		clusterScope.Error(err, "failed to reconcile network")
 		conditions.MarkFalse(powerVSCluster, infrav1beta2.NetworkReadyCondition, infrav1beta2.NetworkReconciliationFailedReason, capiv1beta1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
@@ -180,6 +185,9 @@ func (r *IBMPowerVSClusterReconciler) reconcile(clusterScope *scope.PowerVSClust
 	// reconcile Transit Gateway
 	clusterScope.Info("Reconciling Transit Gateway")
 	if err := clusterScope.ReconcileTransitGateway(); err != nil {
+		if err == infrav1beta2.ResourceNotReady {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		clusterScope.Error(err, "failed to reconcile transit gateway")
 		conditions.MarkFalse(powerVSCluster, infrav1beta2.TransitGatewayReadyCondition, infrav1beta2.TransitGatewayReconciliationFailedReason, capiv1beta1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
@@ -189,6 +197,9 @@ func (r *IBMPowerVSClusterReconciler) reconcile(clusterScope *scope.PowerVSClust
 	// reconcile LoadBalancer
 	clusterScope.Info("Reconciling LoadBalancer")
 	if err := clusterScope.ReconcileLoadBalancer(); err != nil {
+		if err == infrav1beta2.ResourceNotReady {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		clusterScope.Error(err, "failed to reconcile loadBalancer")
 		conditions.MarkFalse(powerVSCluster, infrav1beta2.LoadBalancerReadyCondition, infrav1beta2.LoadBalancerReconciliationFailedReason, capiv1beta1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
@@ -197,6 +208,9 @@ func (r *IBMPowerVSClusterReconciler) reconcile(clusterScope *scope.PowerVSClust
 	// reconcile COSInstance
 	clusterScope.Info("Reconciling COSInstance")
 	if err := clusterScope.ReconcileCOSInstance(); err != nil {
+		if err == infrav1beta2.ResourceNotReady {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		conditions.MarkFalse(powerVSCluster, infrav1beta2.COSInstanceReadyCondition, infrav1beta2.COSInstanceReconciliationFailedReason, capiv1beta1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
 	}
@@ -245,21 +259,33 @@ func (r *IBMPowerVSClusterReconciler) reconcileDelete(ctx context.Context, clust
 
 	clusterScope.Info("Deleting Transit Gateway")
 	if err := clusterScope.DeleteTransitGateway(); err != nil {
+		if err == infrav1beta2.ResourceDeletionPending {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		allErrs = append(allErrs, errors.Wrapf(err, "failed to delete transit gateway"))
 	}
 
 	clusterScope.Info("Deleting VPC load balancer")
 	if err := clusterScope.DeleteLoadBalancer(); err != nil {
+		if err == infrav1beta2.ResourceDeletionPending {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		allErrs = append(allErrs, errors.Wrapf(err, "failed to delete VPC load balancer"))
 	}
 
 	clusterScope.Info("Deleting VPC subnet")
 	if err := clusterScope.DeleteVPCSubnet(); err != nil {
+		if err == infrav1beta2.ResourceDeletionPending {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		allErrs = append(allErrs, errors.Wrapf(err, "failed to delete VPC subnet"))
 	}
 
 	clusterScope.Info("Deleting VPC")
 	if err := clusterScope.DeleteVPC(); err != nil {
+		if err == infrav1beta2.ResourceDeletionPending {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		allErrs = append(allErrs, errors.Wrapf(err, "failed to delete VPC"))
 	}
 
@@ -270,6 +296,9 @@ func (r *IBMPowerVSClusterReconciler) reconcileDelete(ctx context.Context, clust
 
 	clusterScope.Info("Deleting Power VS service instance")
 	if err := clusterScope.DeleteServiceInstance(); err != nil {
+		if err == infrav1beta2.ResourceDeletionPending {
+			return reconcile.Result{RequeueAfter: 2 * time.Minute}, nil
+		}
 		allErrs = append(allErrs, errors.Wrapf(err, "failed to delete Power VS service instance"))
 	}
 

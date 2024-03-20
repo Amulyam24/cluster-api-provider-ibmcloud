@@ -63,6 +63,12 @@ var (
 	// ServiceInstanceStateActive is the string representing a service instance in an active state.
 	ServiceInstanceStateActive = ServiceInstanceState("active")
 
+	// ServiceInstanceStateProvisionin is the string representing a service instance in a provisioning state.
+	ServiceInstanceStateProvisioning = ServiceInstanceState("provisioning")
+
+	// ServiceInstanceStateFailed is the string representing a service instance in a failed state.
+	ServiceInstanceStateFailed = ServiceInstanceState("failed")
+
 	// ServiceInstanceStateRemoved is the string representing a service instance in a removed state.
 	ServiceInstanceStateRemoved = ServiceInstanceState("removed")
 )
@@ -74,6 +80,12 @@ var (
 	// TransitGatewayStateAvailable is the string representing a transit gateway in available state.
 	TransitGatewayStateAvailable = TransitGatewayState("available")
 
+	// TransitGatewayStatePending is the string representing a transit gateway in pending state.
+	TransitGatewayStatePending = TransitGatewayState("pending")
+
+	// TransitGatewayStateFailed is the string representing a transit gateway in failed state.
+	TransitGatewayStateFailed = TransitGatewayState("failed")
+
 	// TransitGatewayStateDeletePending is the string representing a transit gateway in deleting state.
 	TransitGatewayStateDeletePending = TransitGatewayState("deleting")
 )
@@ -84,6 +96,15 @@ type TransitGatewayConnectionState string
 var (
 	// TransitGatewayConnectionStateAttached is the string representing a transit gateway connection in attached state.
 	TransitGatewayConnectionStateAttached = TransitGatewayConnectionState("attached")
+
+	// TransitGatewayConnectionStateFailed is the string representing a transit gateway connection in failed state.
+	TransitGatewayConnectionStateFailed = TransitGatewayConnectionState("failed")
+
+	// TransitGatewayConnectionStatePending is the string representing a transit gateway connection in pending state.
+	TransitGatewayConnectionStatePending = TransitGatewayConnectionState("pending")
+
+	// TransitGatewayConnectionStateDeleting is the string representing a transit gateway connection in deleting state.
+	TransitGatewayConnectionStateDeleting = TransitGatewayConnectionState("deleting")
 )
 
 // VPCLoadBalancerState describes the state of the load balancer.
@@ -106,6 +127,9 @@ type DHCPServerState string
 var (
 	// DHCPServerStateActive indicates the active state of DHCP server.
 	DHCPServerStateActive = DHCPServerState("ACTIVE")
+
+	// DHCPServerStateBuild indicates the build state of DHCP server.
+	DHCPServerStateBuild = DHCPServerState("BUILD")
 )
 
 // DeletePolicy defines the policy used to identify images to be preserved.
@@ -163,3 +187,9 @@ type VPCEndpoint struct {
 	// +optional
 	LBID *string `json:"loadBalancerIPID,omitempty"`
 }
+
+// ResourceNotReady represents an error when a resource in not in desired state.
+var ResourceNotReady error
+
+// ResourceDeletionPending represents an error when a resource is being deleted.
+var ResourceDeletionPending error
