@@ -516,6 +516,14 @@ func (m *PowerVSMachineScope) PatchObject() error {
 
 // DeleteMachine deletes the power vs machine associated with machine instance id and service instance id.
 func (m *PowerVSMachineScope) DeleteMachine() error {
+	if _, err := m.IBMPowerVSClient.GetInstance(m.IBMPowerVSMachine.Status.InstanceID); err != nil {
+		if strings.Contains(err.Error(), string(IBMPowerVSMachineNotFound)) {
+			m.Info("PowerVS virtual instance has already been deleted")
+			return nil
+		}
+		return fmt.Errorf("failed to fetch the instance: %w", err)
+	}
+
 	if err := m.IBMPowerVSClient.DeleteInstance(m.IBMPowerVSMachine.Status.InstanceID); err != nil {
 		record.Warnf(m.IBMPowerVSMachine, "FailedDeleteInstance", "Failed instance deletion - %v", err)
 		return err

@@ -40,4 +40,6 @@ var (
 
 	// VPCSecurityGroupNotFound is the error returned when a VPC security group is not found.
 	VPCSecurityGroupNotFound = ResourceNotFound("Security group not found")
+
+	IBMPowerVSMachineNotFound = ResourceNotFound("pvm-instance does not exist")
 )
