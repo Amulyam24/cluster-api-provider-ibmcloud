@@ -382,12 +382,6 @@ func (s *PowerVSClusterScope) ServiceInstance() *infrav1beta2.IBMPowerVSResource
 
 // GetServiceInstanceID get the service instance id.
 func (s *PowerVSClusterScope) GetServiceInstanceID() string {
-	if s.IBMPowerVSCluster.Spec.ServiceInstanceID != "" {
-		return s.IBMPowerVSCluster.Spec.ServiceInstanceID
-	}
-	if s.IBMPowerVSCluster.Spec.ServiceInstance != nil && s.IBMPowerVSCluster.Spec.ServiceInstance.ID != nil {
-		return *s.IBMPowerVSCluster.Spec.ServiceInstance.ID
-	}
 	if s.IBMPowerVSCluster.Status.ServiceInstance != nil && s.IBMPowerVSCluster.Status.ServiceInstance.ID != nil {
 		return *s.IBMPowerVSCluster.Status.ServiceInstance.ID
 	}
@@ -450,11 +444,8 @@ func (s *PowerVSClusterScope) Network() *infrav1beta2.IBMPowerVSResourceReferenc
 	return &s.IBMPowerVSCluster.Spec.Network
 }
 
-// GetDHCPServerID returns the DHCP id from spec or status of IBMPowerVSCluster object.
+// GetDHCPServerID returns the DHCP id from status of IBMPowerVSCluster object.
 func (s *PowerVSClusterScope) GetDHCPServerID() *string {
-	if s.IBMPowerVSCluster.Spec.DHCPServer != nil && s.IBMPowerVSCluster.Spec.DHCPServer.ID != nil {
-		return s.IBMPowerVSCluster.Spec.DHCPServer.ID
-	}
 	if s.IBMPowerVSCluster.Status.DHCPServer != nil {
 		return s.IBMPowerVSCluster.Status.DHCPServer.ID
 	}
@@ -473,9 +464,6 @@ func (s *PowerVSClusterScope) VPC() *infrav1beta2.VPCResourceReference {
 
 // GetVPCID returns the VPC id.
 func (s *PowerVSClusterScope) GetVPCID() *string {
-	if s.IBMPowerVSCluster.Spec.VPC != nil && s.IBMPowerVSCluster.Spec.VPC.ID != nil {
-		return s.IBMPowerVSCluster.Spec.VPC.ID
-	}
 	if s.IBMPowerVSCluster.Status.VPC != nil {
 		return s.IBMPowerVSCluster.Status.VPC.ID
 	}
@@ -496,15 +484,6 @@ func (s *PowerVSClusterScope) GetVPCSubnetID(subnetName string) *string {
 // GetVPCSubnetIDs returns all the VPC subnet ids.
 func (s *PowerVSClusterScope) GetVPCSubnetIDs() []*string {
 	subnets := []*string{}
-	// use the vpc subnet id set by user.
-	for _, subnet := range s.IBMPowerVSCluster.Spec.VPCSubnets {
-		if subnet.ID != nil {
-			subnets = append(subnets, subnet.ID)
-		}
-	}
-	if len(subnets) != 0 {
-		return subnets
-	}
 	if s.IBMPowerVSCluster.Status.VPCSubnet == nil {
 		return nil
 	}
@@ -515,7 +494,7 @@ func (s *PowerVSClusterScope) GetVPCSubnetIDs() []*string {
 }
 
 // SetVPCSubnetID set the VPC subnet id.
-func (s *PowerVSClusterScope) SetVPCSubnetID(name string, resource infrav1beta2.ResourceReference) {
+func (s *PowerVSClusterScope) SetVPCSubnetStatus(name string, resource infrav1beta2.ResourceReference) {
 	s.V(3).Info("Setting status", "name", name, "resource", resource)
 	if s.IBMPowerVSCluster.Status.VPCSubnet == nil {
 		s.IBMPowerVSCluster.Status.VPCSubnet = make(map[string]infrav1beta2.ResourceReference)
@@ -553,7 +532,7 @@ func (s *PowerVSClusterScope) GetVPCSecurityGroupByID(securityGroupID string) (*
 }
 
 // SetVPCSecurityGroup set the VPC security group id.
-func (s *PowerVSClusterScope) SetVPCSecurityGroup(name string, resource infrav1beta2.VPCSecurityGroupStatus) {
+func (s *PowerVSClusterScope) SetVPCSecurityGroupStatus(name string, resource infrav1beta2.VPCSecurityGroupStatus) {
 	s.V(3).Info("Setting VPC security group status", "name", name, "resource", resource)
 	if s.IBMPowerVSCluster.Status.VPCSecurityGroups == nil {
 		s.IBMPowerVSCluster.Status.VPCSecurityGroups = make(map[string]infrav1beta2.VPCSecurityGroupStatus)
@@ -682,7 +661,7 @@ func (s *PowerVSClusterScope) IsPowerVSZoneSupportsPER() error {
 
 // ReconcileResourceGroup reconciles resource group to fetch resource group id.
 func (s *PowerVSClusterScope) ReconcileResourceGroup() error {
-	// Verify if resource group id is set in spec or status field of IBMPowerVSCluster object.
+	// Verify if resource group id is set in status field of IBMPowerVSCluster object.
 	if resourceGroupID := s.GetResourceGroupID(); resourceGroupID != "" {
 		return nil
 	}
@@ -765,15 +744,36 @@ func (s *PowerVSClusterScope) checkServiceInstanceState(instance resourcecontrol
 	return false, nil
 }
 
-// checkServiceInstance checks PowerVS service instance exist in cloud.
+// checkServiceInstance checks PowerVS service instance exist in cloud by ID or name.
 func (s *PowerVSClusterScope) isServiceInstanceExists() (string, bool, error) {
 	s.V(3).Info("Checking for PowerVS service instance in IBM Cloud")
-	// Fetches service instance by name.
-	serviceInstance, err := s.getServiceInstance()
+	var (
+		id              string
+		err             error
+		serviceInstance *resourcecontrollerv2.ResourceInstance
+	)
+
+	if s.IBMPowerVSCluster.Spec.ServiceInstanceID != "" {
+		id = s.IBMPowerVSCluster.Spec.ServiceInstanceID
+	} else if s.IBMPowerVSCluster.Spec.ServiceInstance != nil && s.IBMPowerVSCluster.Spec.ServiceInstance.ID != nil {
+		id = *s.IBMPowerVSCluster.Spec.ServiceInstance.ID
+	}
+
+	if id != "" {
+		// Fetches service instance by ID.
+		serviceInstance, _, err = s.ResourceClient.GetResourceInstance(&resourcecontrollerv2.GetResourceInstanceOptions{
+			ID: &id,
+		})
+	} else {
+		// Fetches service instance by name.
+		serviceInstance, err = s.getServiceInstance()
+	}
+
 	if err != nil {
 		s.Error(err, "failed to get PowerVS service instance")
 		return "", false, err
 	}
+
 	if serviceInstance == nil {
 		s.V(3).Info("PowerVS service instance with given name does not exist in IBM Cloud", "name", *s.GetServiceName(infrav1beta2.ResourceTypeServiceInstance))
 		return "", false, nil
@@ -840,7 +840,7 @@ func (s *PowerVSClusterScope) ReconcileNetwork() (bool, error) {
 	if networkID != nil {
 		s.V(3).Info("Found PowerVS network in IBM Cloud", "id", networkID)
 		s.SetStatus(infrav1beta2.ResourceTypeNetwork, infrav1beta2.ResourceReference{ID: networkID, ControllerCreated: ptr.To(false)})
-		return false, nil
+		return true, nil
 	}
 
 	dhcpServer, err := s.createDHCPServer()
@@ -904,11 +904,7 @@ func (s *PowerVSClusterScope) getNetwork() (*string, error) {
 
 // isDHCPServerActive checks if the DHCP server status is active.
 func (s *PowerVSClusterScope) isDHCPServerActive() (bool, error) {
-	dhcpID := *s.GetDHCPServerID()
-	if dhcpID == "" {
-		return false, fmt.Errorf("DHCP ID is empty")
-	}
-	dhcpServer, err := s.IBMPowerVSClient.GetDHCPServer(dhcpID)
+	dhcpServer, err := s.IBMPowerVSClient.GetDHCPServer(*s.GetDHCPServerID())
 	if err != nil {
 		return false, err
 	}
@@ -1023,7 +1019,16 @@ func (s *PowerVSClusterScope) ReconcileVPC() (bool, error) {
 
 // checkVPC checks VPC exist in cloud.
 func (s *PowerVSClusterScope) checkVPC() (string, error) {
-	vpcDetails, err := s.getVPCByName()
+	var err error
+	var vpcDetails *vpcv1.VPC
+	if s.IBMPowerVSCluster.Spec.VPC != nil && s.IBMPowerVSCluster.Spec.VPC.ID != nil {
+		vpcDetails, _, err = s.IBMVPCClient.GetVPC(&vpcv1.GetVPCOptions{
+			ID: s.IBMPowerVSCluster.Spec.VPC.ID,
+		})
+	} else {
+		vpcDetails, err = s.getVPCByName()
+	}
+
 	if err != nil {
 		s.Error(err, "failed to get VPC")
 		return "", err
@@ -1136,7 +1141,7 @@ func (s *PowerVSClusterScope) ReconcileVPCSubnets() (bool, error) {
 		}
 		if vpcSubnetID != "" {
 			s.V(3).Info("Found VPC subnet in IBM Cloud", "id", vpcSubnetID)
-			s.SetVPCSubnetID(*subnet.Name, infrav1beta2.ResourceReference{ID: &vpcSubnetID, ControllerCreated: ptr.To(false)})
+			s.SetVPCSubnetStatus(*subnet.Name, infrav1beta2.ResourceReference{ID: &vpcSubnetID, ControllerCreated: ptr.To(false)})
 			// check for next subnet
 			continue
 		}
@@ -1148,7 +1153,7 @@ func (s *PowerVSClusterScope) ReconcileVPCSubnets() (bool, error) {
 			return false, err
 		}
 		s.Info("Created VPC subnet", "id", subnetID)
-		s.SetVPCSubnetID(*subnet.Name, infrav1beta2.ResourceReference{ID: subnetID, ControllerCreated: ptr.To(true)})
+		s.SetVPCSubnetStatus(*subnet.Name, infrav1beta2.ResourceReference{ID: subnetID, ControllerCreated: ptr.To(true)})
 		return true, nil
 	}
 	return false, nil
@@ -1262,7 +1267,7 @@ func (s *PowerVSClusterScope) ReconcileVPCSecurityGroups() error {
 		}
 		if sg != nil {
 			s.V(3).Info("VPC security group already exists", "name", *sg.Name)
-			s.SetVPCSecurityGroup(*sg.Name, infrav1beta2.VPCSecurityGroupStatus{
+			s.SetVPCSecurityGroupStatus(*sg.Name, infrav1beta2.VPCSecurityGroupStatus{
 				ID:                sg.ID,
 				RuleIDs:           ruleIDs,
 				ControllerCreated: ptr.To(false),
@@ -1275,7 +1280,7 @@ func (s *PowerVSClusterScope) ReconcileVPCSecurityGroups() error {
 			return fmt.Errorf("failed to create VPC security group: %w", err)
 		}
 		s.Info("VPC security group created", "name", *securityGroup.Name)
-		s.SetVPCSecurityGroup(*securityGroup.Name, infrav1beta2.VPCSecurityGroupStatus{
+		s.SetVPCSecurityGroupStatus(*securityGroup.Name, infrav1beta2.VPCSecurityGroupStatus{
 			ID:                securityGroupID,
 			ControllerCreated: ptr.To(true),
 		})
@@ -1414,7 +1419,7 @@ func (s *PowerVSClusterScope) createVPCSecurityGroupRulesAndSetStatus(ogSecurity
 	}
 	s.Info("VPC security group rules created", "security group name", *securityGroupName)
 
-	s.SetVPCSecurityGroup(*securityGroupName, infrav1beta2.VPCSecurityGroupStatus{
+	s.SetVPCSecurityGroupStatus(*securityGroupName, infrav1beta2.VPCSecurityGroupStatus{
 		ID:                securityGroupID,
 		RuleIDs:           ruleIDs,
 		ControllerCreated: ptr.To(true),

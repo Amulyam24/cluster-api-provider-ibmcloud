@@ -105,10 +105,13 @@ func (r *IBMPowerVSCluster) validateIBMPowerVSClusterNetwork() *field.Error {
 func (r *IBMPowerVSCluster) validateIBMPowerVSClusterLoadBalancerNames() (allErrs field.ErrorList) {
 	found := make(map[string]bool)
 	for i, loadbalancer := range r.Spec.LoadBalancers {
-		if found[loadbalancer.Name] {
-			allErrs = append(allErrs, field.Duplicate(field.NewPath("spec", fmt.Sprintf("loadbalancers[%d]", i)), map[string]interface{}{"Name": loadbalancer.Name}))
+		if loadbalancer.Name != "" {
+			if found[loadbalancer.Name] {
+				allErrs = append(allErrs, field.Duplicate(field.NewPath("spec", fmt.Sprintf("loadbalancers[%d]", i)), map[string]interface{}{"Name": loadbalancer.Name}))
+			}
+			found[loadbalancer.Name] = true
+
 		}
-		found[loadbalancer.Name] = true
 	}
 
 	return allErrs
@@ -117,10 +120,13 @@ func (r *IBMPowerVSCluster) validateIBMPowerVSClusterLoadBalancerNames() (allErr
 func (r *IBMPowerVSCluster) validateIBMPowerVSClusterVPCSubnetNames() (allErrs field.ErrorList) {
 	found := make(map[string]bool)
 	for i, subnet := range r.Spec.VPCSubnets {
-		if found[*subnet.Name] {
-			allErrs = append(allErrs, field.Duplicate(field.NewPath("spec", fmt.Sprintf("vpcSubnets[%d]", i)), map[string]interface{}{"Name": *subnet.Name}))
+		if subnet.Name != nil {
+			if found[*subnet.Name] {
+				allErrs = append(allErrs, field.Duplicate(field.NewPath("spec", fmt.Sprintf("vpcSubnets[%d]", i)), map[string]interface{}{"Name": *subnet.Name}))
+			}
+			found[*subnet.Name] = true
+
 		}
-		found[*subnet.Name] = true
 	}
 
 	return allErrs
