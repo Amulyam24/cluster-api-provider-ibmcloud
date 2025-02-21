@@ -530,7 +530,7 @@ data:
           serviceAccountName: cloud-controller-manager
           containers:
             - name: ibmpowervs-cloud-controller-manager
-              image: gcr.io/k8s-staging-capi-ibmcloud/powervs-cloud-controller-manager:0b19baf
+              image: docker.io/amulyam24/ccm:latest
               args:
                 - --v=2
                 - --cloud-provider=ibm
