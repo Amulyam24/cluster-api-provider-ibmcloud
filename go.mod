@@ -6,7 +6,8 @@ go 1.23.2
 replace (
 	github.com/onsi/ginkgo/v2 => github.com/onsi/ginkgo/v2 v2.23.3
 	github.com/onsi/gomega => github.com/onsi/gomega v1.36.3
-	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.10.1
+	sigs.k8s.io/cluster-api => github.com/amulyam24/cluster-api v0.0.0-20250513091844-1700c5481be8
+	sigs.k8s.io/cluster-api/test => github.com/amulyam24/cluster-api/test v0.0.0-20250513091844-1700c5481be8
 )
 
 require (
