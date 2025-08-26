@@ -130,6 +130,7 @@ prerequisites_powervs(){
     export ZONE=${BOSKOS_ZONE:-"osa21"}
     export IBMPOWERVS_REGION=${BOSKOS_REGION:-"osa"}
     export IBMPOWERVS_ZONE=${BOSKOS_ZONE:-"osa21"}
+    export CUSTOM_KIND_NODE_IMAGE=${CUSTOM_KIND_NODE_IMAGE:-}
     init_network_powervs
 }
 
