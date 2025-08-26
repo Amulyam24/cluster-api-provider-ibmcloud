@@ -205,8 +205,6 @@ func setupBootstrapCluster(config *clusterctl.E2EConfig, scheme *runtime.Scheme,
 	customImage := config.GetVariableOrEmpty(CustomKindNodeImage)
 	if customImage != "" {
 		input.CustomNodeImage = customImage
-	} else {
-		input.KubernetesVersion = e2eConfig.MustGetVariable(KubernetesVersion)
 	}
 
 	if !useExistingCluster {
